@@ -2,7 +2,8 @@ import axios from 'axios';
 import { Customer, Product, SalesChallan, InventoryLog, User, Role } from '../types';
 import { INITIAL_CUSTOMERS, INITIAL_PRODUCTS, INITIAL_CHALLANS, INITIAL_INVENTORY_LOGS } from './mockData';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl.replace(/\/$/, '')}/api`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
