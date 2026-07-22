@@ -184,3 +184,20 @@ export const deleteCustomer = async (id: number) => {
 
   return;
 };
+
+export const addCustomerNote = async (id: number, note: string) => {
+  const customer = await prisma.customer.findUnique({
+    where: { id },
+  });
+
+  if (!customer) {
+    throw new Error("Customer not found.");
+  }
+
+  const updatedNotes = customer.notes ? `${customer.notes}\n${note}` : note;
+
+  return await prisma.customer.update({
+    where: { id },
+    data: { notes: updatedNotes },
+  });
+};
