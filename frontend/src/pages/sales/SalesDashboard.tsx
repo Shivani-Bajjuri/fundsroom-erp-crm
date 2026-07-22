@@ -3,18 +3,23 @@ import { CustomerService, ChallanService } from '../../services/api';
 import { Customer, SalesChallan } from '../../types';
 import { StatCard } from '../../components/common/StatCard';
 import { Modal } from '../../components/common/Modal';
+import { LoadingSpinner } from '../../components/common/LoadingSpinner';
+import { ErrorAlert } from '../../components/common/ErrorAlert';
 import { useAuth } from '../../context/AuthContext';
 import {
   DollarSign,
   TrendingUp,
   UserCheck,
   Calendar,
-  FileSpreadsheet,
   Clock,
   Plus,
-  Search,
   MessageSquare,
-  Printer
+  User as UserIcon,
+  Mail,
+  Phone,
+  Building,
+  MapPin,
+  FileText
 } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 
@@ -22,8 +27,10 @@ export const SalesDashboard: React.FC = () => {
   const { user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [challans, setChallans] = useState<SalesChallan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
-  const [isChallanModalOpen, setIsChallanModalOpen] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [noteText, setNoteText] = useState('');
@@ -40,30 +47,51 @@ export const SalesDashboard: React.FC = () => {
   });
 
   const loadData = async () => {
-    const [c, ch] = await Promise.all([
-      CustomerService.getAll(),
-      ChallanService.getAll()
-    ]);
-    setCustomers(c);
-    setChallans(ch);
+    setLoading(true);
+    setError(null);
+    try {
+      const [c, ch] = await Promise.all([
+        CustomerService.getAll(),
+        ChallanService.getAll()
+      ]);
+      setCustomers(Array.isArray(c) ? c : []);
+      setChallans(Array.isArray(ch) ? ch : []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch sales dashboard data');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const todaySales = challans
-    .filter(c => c.status === 'CONFIRMED' && new Date(c.createdAt).toDateString() === new Date().toDateString())
-    .reduce((acc, c) => acc + c.items.reduce((s, i) => s + (i.unitPrice * i.quantity), 0), 0);
+  if (loading) {
+    return <LoadingSpinner message="Loading Sales Workspace..." />;
+  }
 
-  const monthlySales = challans
-    .filter(c => c.status === 'CONFIRMED')
-    .reduce((acc, c) => acc + c.items.reduce((s, i) => s + (i.unitPrice * i.quantity), 0), 0);
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-extrabold text-white">Sales & Client Workspace</h1>
+        <ErrorAlert title="Sales Dashboard Error" message={error} onRetry={loadData} />
+      </div>
+    );
+  }
 
-  const todayLeads = customers.filter(c => c.status === 'LEAD').length;
-  const activeCustomers = customers.filter(c => c.status === 'ACTIVE').length;
-  const upcomingFollowups = customers.filter(c => c.followUpDate).length;
-  const pendingChallans = challans.filter(c => c.status === 'DRAFT').length;
+  const todaySales = (challans || [])
+    .filter(c => c && c.status === 'CONFIRMED' && new Date(c.createdAt).toDateString() === new Date().toDateString())
+    .reduce((acc, c) => acc + (c.items || []).reduce((s, i) => s + ((i?.unitPrice || 0) * (i?.quantity || 0)), 0), 0);
+
+  const monthlySales = (challans || [])
+    .filter(c => c && c.status === 'CONFIRMED')
+    .reduce((acc, c) => acc + (c.items || []).reduce((s, i) => s + ((i?.unitPrice || 0) * (i?.quantity || 0)), 0), 0);
+
+  const todayLeads = (customers || []).filter(c => c && c.status === 'LEAD').length;
+  const activeCustomers = (customers || []).filter(c => c && c.status === 'ACTIVE').length;
+  const upcomingFollowups = (customers || []).filter(c => c && c.followUpDate).length;
+  const pendingChallans = (challans || []).filter(c => c && c.status === 'DRAFT').length;
 
   const salesPerformanceData = {
     labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
@@ -81,18 +109,27 @@ export const SalesDashboard: React.FC = () => {
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    await CustomerService.create({ ...customerForm, status: 'LEAD' } as any);
-    setIsCustomerModalOpen(false);
-    loadData();
+    try {
+      await CustomerService.create({ ...customerForm, status: 'LEAD' } as any);
+      setIsCustomerModalOpen(false);
+      setCustomerForm({ name: '', email: '', mobile: '', businessName: '', type: 'WHOLESALE', address: '', followUpDate: '2026-07-28' });
+      loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to add customer');
+    }
   };
 
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCustomerId || !noteText) return;
-    await CustomerService.addNote(selectedCustomerId, noteText);
-    setIsNoteModalOpen(false);
-    setNoteText('');
-    loadData();
+    try {
+      await CustomerService.addNote(selectedCustomerId, noteText);
+      setIsNoteModalOpen(false);
+      setNoteText('');
+      loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to add follow-up note');
+    }
   };
 
   return (
@@ -114,7 +151,7 @@ export const SalesDashboard: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsCustomerModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all shadow-md shadow-emerald-600/30"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all shadow-md shadow-emerald-600/30 hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="w-4 h-4" /> Add Customer
           </button>
@@ -176,15 +213,15 @@ export const SalesDashboard: React.FC = () => {
         <div className="glass-card p-5 rounded-2xl">
           <h3 className="text-base font-bold text-white mb-4">Upcoming Follow-ups</h3>
           <div className="space-y-3">
-            {customers.filter(c => c.followUpDate).slice(0, 4).map(c => (
-              <div key={c.id} className="p-3 rounded-xl bg-dark-900/60 border border-slate-800 flex items-center justify-between">
+            {(customers || []).filter(c => c && c.followUpDate).slice(0, 4).map(c => (
+              <div key={c?.id} className="p-3 rounded-xl bg-dark-900/60 border border-slate-800 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold text-white">{c.name}</p>
-                  <p className="text-[10px] text-slate-400">{c.businessName}</p>
+                  <p className="text-xs font-bold text-white">{c?.name}</p>
+                  <p className="text-[10px] text-slate-400">{c?.businessName}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold">
-                    {c.followUpDate}
+                    {c?.followUpDate}
                   </span>
                   <button
                     onClick={() => {
@@ -225,22 +262,22 @@ export const SalesDashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {customers.map(c => (
-                <tr key={c.id}>
-                  <td className="py-3 font-semibold text-white">{c.name}</td>
-                  <td className="py-3 text-slate-300">{c.businessName}</td>
-                  <td className="py-3 text-slate-400">{c.mobile} | {c.email}</td>
+              {(customers || []).map(c => (
+                <tr key={c?.id}>
+                  <td className="py-3 font-semibold text-white">{c?.name}</td>
+                  <td className="py-3 text-slate-300">{c?.businessName}</td>
+                  <td className="py-3 text-slate-400">{c?.mobile} | {c?.email}</td>
                   <td className="py-3">
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">
-                      {c.type}
+                      {c?.type}
                     </span>
                   </td>
                   <td className="py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${c.status === 'ACTIVE' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                      {c.status}
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${c?.status === 'ACTIVE' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                      {c?.status}
                     </span>
                   </td>
-                  <td className="py-3 text-slate-400 max-w-xs truncate">{c.notes || 'No notes'}</td>
+                  <td className="py-3 text-slate-400 max-w-xs truncate">{c?.notes || 'No notes'}</td>
                   <td className="py-3">
                     <button
                       onClick={() => {
@@ -260,46 +297,120 @@ export const SalesDashboard: React.FC = () => {
       </div>
 
       {/* Add Customer Modal */}
-      <Modal isOpen={isCustomerModalOpen} onClose={() => setIsCustomerModalOpen(false)} title="Create Customer Lead">
+      <Modal
+        isOpen={isCustomerModalOpen}
+        onClose={() => setIsCustomerModalOpen(false)}
+        title="Create Customer Lead"
+        subtitle="Record a new lead profile in the sales CRM"
+      >
         <form onSubmit={handleAddCustomer} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Customer Full Name</label>
-            <input required type="text" className="w-full px-3 py-2 bg-dark-900 border border-slate-700 rounded-xl text-xs text-white" value={customerForm.name} onChange={e => setCustomerForm({...customerForm, name: e.target.value})} />
+            <label className="text-xs font-semibold text-slate-200 mb-1.5 flex items-center gap-1.5">
+              <UserIcon className="w-3.5 h-3.5 text-emerald-400" /> Customer Full Name
+            </label>
+            <input
+              required
+              type="text"
+              placeholder="e.g. Priya Verma"
+              className="w-full px-3.5 py-2.5 bg-[#1E293B]/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+              value={customerForm.name}
+              onChange={e => setCustomerForm({...customerForm, name: e.target.value})}
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Email Address</label>
-              <input required type="email" className="w-full px-3 py-2 bg-dark-900 border border-slate-700 rounded-xl text-xs text-white" value={customerForm.email} onChange={e => setCustomerForm({...customerForm, email: e.target.value})} />
+              <label className="text-xs font-semibold text-slate-200 mb-1.5 flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-emerald-400" /> Email Address
+              </label>
+              <input
+                required
+                type="email"
+                placeholder="priya@company.com"
+                className="w-full px-3.5 py-2.5 bg-[#1E293B]/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                value={customerForm.email}
+                onChange={e => setCustomerForm({...customerForm, email: e.target.value})}
+              />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Mobile Number</label>
-              <input required type="text" className="w-full px-3 py-2 bg-dark-900 border border-slate-700 rounded-xl text-xs text-white" value={customerForm.mobile} onChange={e => setCustomerForm({...customerForm, mobile: e.target.value})} />
+              <label className="text-xs font-semibold text-slate-200 mb-1.5 flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-emerald-400" /> Mobile Number
+              </label>
+              <input
+                required
+                type="text"
+                placeholder="+91 98123 45678"
+                className="w-full px-3.5 py-2.5 bg-[#1E293B]/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                value={customerForm.mobile}
+                onChange={e => setCustomerForm({...customerForm, mobile: e.target.value})}
+              />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Business / Enterprise Name</label>
-            <input required type="text" className="w-full px-3 py-2 bg-dark-900 border border-slate-700 rounded-xl text-xs text-white" value={customerForm.businessName} onChange={e => setCustomerForm({...customerForm, businessName: e.target.value})} />
+            <label className="text-xs font-semibold text-slate-200 mb-1.5 flex items-center gap-1.5">
+              <Building className="w-3.5 h-3.5 text-emerald-400" /> Business / Enterprise Name
+            </label>
+            <input
+              required
+              type="text"
+              placeholder="e.g. Apex Retail Outlets"
+              className="w-full px-3.5 py-2.5 bg-[#1E293B]/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+              value={customerForm.businessName}
+              onChange={e => setCustomerForm({...customerForm, businessName: e.target.value})}
+            />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Address</label>
-            <textarea required className="w-full px-3 py-2 bg-dark-900 border border-slate-700 rounded-xl text-xs text-white" rows={2} value={customerForm.address} onChange={e => setCustomerForm({...customerForm, address: e.target.value})} />
+            <label className="text-xs font-semibold text-slate-200 mb-1.5 flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-emerald-400" /> Address
+            </label>
+            <textarea
+              required
+              rows={2}
+              placeholder="Shop / Office address"
+              className="w-full px-3.5 py-2.5 bg-[#1E293B]/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+              value={customerForm.address}
+              onChange={e => setCustomerForm({...customerForm, address: e.target.value})}
+            />
           </div>
-          <button type="submit" className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors shadow-lg">
-            Save Sales Customer
-          </button>
+          <div className="pt-2">
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-extrabold text-xs transition-all shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-[0.99]"
+            >
+              <Plus className="w-4 h-4" /> Save Sales Customer
+            </button>
+          </div>
         </form>
       </Modal>
 
       {/* Add Followup Note Modal */}
-      <Modal isOpen={isNoteModalOpen} onClose={() => setIsNoteModalOpen(false)} title="Add Follow-up Note">
+      <Modal
+        isOpen={isNoteModalOpen}
+        onClose={() => setIsNoteModalOpen(false)}
+        title="Add Follow-up Note"
+        subtitle="Append interaction notes to the customer profile"
+      >
         <form onSubmit={handleAddNote} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Note / Interaction Details</label>
-            <textarea required className="w-full px-3 py-2 bg-dark-900 border border-slate-700 rounded-xl text-xs text-white" rows={3} value={noteText} onChange={e => setNoteText(e.target.value)} />
+            <label className="text-xs font-semibold text-slate-200 mb-1.5 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-emerald-400" /> Note / Interaction Details
+            </label>
+            <textarea
+              required
+              rows={3}
+              placeholder="Enter details of call, meeting, or quote discussion..."
+              className="w-full px-3.5 py-2.5 bg-[#1E293B]/80 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+            />
           </div>
-          <button type="submit" className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors shadow-lg">
-            Append Follow-up Note
-          </button>
+          <div className="pt-2">
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-extrabold text-xs transition-all shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-[0.99]"
+            >
+              <MessageSquare className="w-4 h-4" /> Append Follow-up Note
+            </button>
+          </div>
         </form>
       </Modal>
     </div>

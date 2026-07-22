@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { ChallanService, CustomerService } from '../../services/api';
 import { SalesChallan, Customer } from '../../types';
 import { StatCard } from '../../components/common/StatCard';
+import { LoadingSpinner } from '../../components/common/LoadingSpinner';
+import { ErrorAlert } from '../../components/common/ErrorAlert';
 import {
   DollarSign,
   TrendingUp,
-  PieChart,
   Download,
   Printer,
   FileSpreadsheet,
@@ -13,36 +14,58 @@ import {
   XCircle,
   Users
 } from 'lucide-react';
-import { Line, Bar } from 'react-chartjs-2';
+import { Line } from 'react-chartjs-2';
 
 export const AccountsDashboard: React.FC = () => {
   const [challans, setChallans] = useState<SalesChallan[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
+  const loadData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
       const [ch, c] = await Promise.all([
         ChallanService.getAll(),
         CustomerService.getAll()
       ]);
-      setChallans(ch);
-      setCustomers(c);
-    };
-    load();
+      setChallans(Array.isArray(ch) ? ch : []);
+      setCustomers(Array.isArray(c) ? c : []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch financial accounts data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
-  const confirmedChallans = challans.filter(c => c.status === 'CONFIRMED');
-  const cancelledChallans = challans.filter(c => c.status === 'CANCELLED');
+  if (loading) {
+    return <LoadingSpinner message="Accessing Accounts & Financial Oversight System..." />;
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-extrabold text-white">Accounts & Financial Oversight</h1>
+        <ErrorAlert title="Accounts Dashboard Error" message={error} onRetry={loadData} />
+      </div>
+    );
+  }
+
+  const confirmedChallans = (challans || []).filter(c => c && c.status === 'CONFIRMED');
+  const cancelledChallans = (challans || []).filter(c => c && c.status === 'CANCELLED');
 
   const totalRevenue = confirmedChallans.reduce((acc, c) => 
-    acc + c.items.reduce((s, i) => s + (i.unitPrice * i.quantity), 0), 0
+    acc + (c.items || []).reduce((s, i) => s + ((i?.unitPrice || 0) * (i?.quantity || 0)), 0), 0
   );
 
   const todayRevenue = confirmedChallans
-    .filter(c => new Date(c.createdAt).toDateString() === new Date().toDateString())
-    .reduce((acc, c) => acc + c.items.reduce((s, i) => s + (i.unitPrice * i.quantity), 0), 0);
-
-  const monthlyRevenue = totalRevenue; // Demo metric
+    .filter(c => c && c.createdAt && new Date(c.createdAt).toDateString() === new Date().toDateString())
+    .reduce((acc, c) => acc + (c.items || []).reduce((s, i) => s + ((i?.unitPrice || 0) * (i?.quantity || 0)), 0), 0);
 
   const revenueTrendData = {
     labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'],
@@ -60,9 +83,9 @@ export const AccountsDashboard: React.FC = () => {
 
   const handleExportCSV = () => {
     const headers = ['Challan No,Customer,Status,Total Qty,Total Value (INR),Date\n'];
-    const rows = challans.map(c => {
-      const val = c.items.reduce((acc, i) => acc + (i.unitPrice * i.quantity), 0);
-      return `${c.challanNumber},${c.customer?.name || 'Customer'},${c.status},${c.totalQuantity},${val},${new Date(c.createdAt).toLocaleDateString()}`;
+    const rows = (challans || []).map(c => {
+      const val = (c.items || []).reduce((acc, i) => acc + ((i?.unitPrice || 0) * (i?.quantity || 0)), 0);
+      return `${c?.challanNumber || ''},${c?.customer?.name || 'Customer'},${c?.status || ''},${c?.totalQuantity || 0},${val},${c?.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}`;
     });
     const blob = new Blob([headers.join('') + rows.join('\n')], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -155,14 +178,14 @@ export const AccountsDashboard: React.FC = () => {
             <Users className="w-4 h-4 text-teal-400" /> Top Billing Enterprise Clients
           </h3>
           <div className="space-y-3">
-            {customers.slice(0, 4).map(c => (
-              <div key={c.id} className="p-3 rounded-xl bg-dark-900/60 border border-slate-800 flex items-center justify-between">
+            {(customers || []).slice(0, 4).map(c => (
+              <div key={c?.id} className="p-3 rounded-xl bg-dark-900/60 border border-slate-800 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold text-white">{c.name}</p>
-                  <p className="text-[10px] text-slate-400">{c.businessName}</p>
+                  <p className="text-xs font-bold text-white">{c?.name}</p>
+                  <p className="text-[10px] text-slate-400">{c?.businessName}</p>
                 </div>
                 <span className="text-xs font-extrabold text-teal-400">
-                  ₹{((c.id * 85000) % 250000 + 45000).toLocaleString('en-IN')}
+                  ₹{(( (c?.id || 1) * 85000) % 250000 + 45000).toLocaleString('en-IN')}
                 </span>
               </div>
             ))}
@@ -189,23 +212,23 @@ export const AccountsDashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {challans.map(c => {
-                const totalVal = c.items.reduce((s, i) => s + (i.unitPrice * i.quantity), 0);
+              {(challans || []).map(c => {
+                const totalVal = (c.items || []).reduce((s, i) => s + ((i?.unitPrice || 0) * (i?.quantity || 0)), 0);
                 return (
-                  <tr key={c.id}>
-                    <td className="py-3 font-mono font-bold text-white">{c.challanNumber}</td>
-                    <td className="py-3 text-slate-300">{c.customer?.name || 'Client'}</td>
-                    <td className="py-3 text-slate-400">{c.totalQuantity} items</td>
+                  <tr key={c?.id}>
+                    <td className="py-3 font-mono font-bold text-white">{c?.challanNumber}</td>
+                    <td className="py-3 text-slate-300">{c?.customer?.name || 'Client'}</td>
+                    <td className="py-3 text-slate-400">{c?.totalQuantity || 0} items</td>
                     <td className="py-3 text-teal-400 font-extrabold">₹{totalVal.toLocaleString('en-IN')}</td>
                     <td className="py-3">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        c.status === 'CONFIRMED' ? 'bg-emerald-500/20 text-emerald-400' :
-                        c.status === 'DRAFT' ? 'bg-amber-500/20 text-amber-400' : 'bg-rose-500/20 text-rose-400'
+                        c?.status === 'CONFIRMED' ? 'bg-emerald-500/20 text-emerald-400' :
+                        c?.status === 'DRAFT' ? 'bg-amber-500/20 text-amber-400' : 'bg-rose-500/20 text-rose-400'
                       }`}>
-                        {c.status}
+                        {c?.status}
                       </span>
                     </td>
-                    <td className="py-3 text-slate-500">{new Date(c.createdAt).toLocaleDateString()}</td>
+                    <td className="py-3 text-slate-500">{c?.createdAt ? new Date(c.createdAt).toLocaleDateString() : ''}</td>
                   </tr>
                 );
               })}

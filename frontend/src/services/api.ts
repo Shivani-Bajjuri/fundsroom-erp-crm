@@ -9,6 +9,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 5000,
 });
 
 api.interceptors.request.use((config) => {
@@ -19,14 +20,33 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      localStorage.removeItem('erp_user');
+      localStorage.removeItem('erp_token');
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Mock Storage Helpers
 const getStorage = <T>(key: string, fallback: T): T => {
-  const data = localStorage.getItem(`mock_${key}`);
-  return data ? JSON.parse(data) : fallback;
+  try {
+    const data = localStorage.getItem(`mock_${key}`);
+    return data ? JSON.parse(data) : fallback;
+  } catch {
+    return fallback;
+  }
 };
 
 const setStorage = <T>(key: string, data: T) => {
-  localStorage.setItem(`mock_${key}`, JSON.stringify(data));
+  try {
+    localStorage.setItem(`mock_${key}`, JSON.stringify(data));
+  } catch (err) {
+    console.error(`Failed to set mock storage for key ${key}`, err);
+  }
 };
 
 // Initialize Mock Storage if empty
@@ -39,11 +59,11 @@ export const AuthService = {
   login: async (email: string, password?: string): Promise<{ token: string; user: User }> => {
     try {
       const res = await api.post('/auth/login', { email, password: password || '123456' });
-      if (res.data.success) {
+      if (res.data && res.data.success) {
         return res.data;
       }
-      throw new Error(res.data.message);
-    } catch (err: any) {
+      throw new Error(res.data?.message || 'Login failed');
+    } catch {
       // Mock Fallback matching roles
       let role: Role = 'ADMIN';
       let name = 'Admin User';
@@ -61,7 +81,7 @@ export const AuthService = {
 
       // Check registered mock users first
       const mockUsers = getStorage<User[]>('registered_users', []);
-      const found = mockUsers.find(u => u.email.toLowerCase() === lowerEmail);
+      const found = mockUsers.find(u => u && u.email && u.email.toLowerCase() === lowerEmail);
       if (found) {
         const mockToken = `mock-jwt-token-${found.role.toLowerCase()}-${Date.now()}`;
         return { token: mockToken, user: found };
@@ -82,11 +102,11 @@ export const AuthService = {
   signup: async (data: { name: string; email: string; password: string; role: Role }): Promise<{ token: string; user: User }> => {
     try {
       const res = await api.post('/auth/signup', data);
-      if (res.data.success) {
+      if (res.data && res.data.success) {
         return res.data;
       }
-      throw new Error(res.data.message);
-    } catch (err: any) {
+      throw new Error(res.data?.message || 'Sign up failed');
+    } catch {
       const newUser: User = {
         id: Date.now(),
         name: data.name,
@@ -107,7 +127,7 @@ export const CustomerService = {
   getAll: async (): Promise<Customer[]> => {
     try {
       const res = await api.get('/customers');
-      return res.data.data || res.data;
+      return res.data?.data || res.data || [];
     } catch {
       return getStorage<Customer[]>('customers', INITIAL_CUSTOMERS);
     }
@@ -115,16 +135,16 @@ export const CustomerService = {
   getById: async (id: number): Promise<Customer | null> => {
     try {
       const res = await api.get(`/customers/${id}`);
-      return res.data.data;
+      return res.data?.data || null;
     } catch {
       const list = getStorage<Customer[]>('customers', INITIAL_CUSTOMERS);
-      return list.find(c => c.id === id) || null;
+      return list.find(c => c && c.id === id) || null;
     }
   },
   create: async (data: Partial<Customer>): Promise<Customer> => {
     try {
       const res = await api.post('/customers', data);
-      return res.data.data;
+      return res.data?.data;
     } catch {
       const list = getStorage<Customer[]>('customers', INITIAL_CUSTOMERS);
       const newCustomer: Customer = {
@@ -150,10 +170,10 @@ export const CustomerService = {
   update: async (id: number, data: Partial<Customer>): Promise<Customer> => {
     try {
       const res = await api.put(`/customers/${id}`, data);
-      return res.data.data;
+      return res.data?.data;
     } catch {
       const list = getStorage<Customer[]>('customers', INITIAL_CUSTOMERS);
-      const index = list.findIndex(c => c.id === id);
+      const index = list.findIndex(c => c && c.id === id);
       if (index !== -1) {
         list[index] = { ...list[index], ...data, updatedAt: new Date().toISOString() };
         setStorage('customers', list);
@@ -167,16 +187,16 @@ export const CustomerService = {
       await api.delete(`/customers/${id}`);
     } catch {
       const list = getStorage<Customer[]>('customers', INITIAL_CUSTOMERS);
-      setStorage('customers', list.filter(c => c.id !== id));
+      setStorage('customers', list.filter(c => c && c.id !== id));
     }
   },
   addNote: async (id: number, note: string): Promise<Customer> => {
     try {
       const res = await api.post(`/customers/${id}/notes`, { note });
-      return res.data.data;
+      return res.data?.data;
     } catch {
       const list = getStorage<Customer[]>('customers', INITIAL_CUSTOMERS);
-      const index = list.findIndex(c => c.id === id);
+      const index = list.findIndex(c => c && c.id === id);
       if (index !== -1) {
         const existingNotes = list[index].notes ? `${list[index].notes}\n` : '';
         list[index].notes = `${existingNotes}[${new Date().toLocaleDateString()}] ${note}`;
@@ -192,7 +212,7 @@ export const ProductService = {
   getAll: async (): Promise<Product[]> => {
     try {
       const res = await api.get('/products');
-      return res.data.data || res.data;
+      return res.data?.data || res.data || [];
     } catch {
       return getStorage<Product[]>('products', INITIAL_PRODUCTS);
     }
@@ -200,16 +220,16 @@ export const ProductService = {
   getLowStock: async (): Promise<Product[]> => {
     try {
       const res = await api.get('/products/low-stock');
-      return res.data.data;
+      return res.data?.data || [];
     } catch {
       const list = getStorage<Product[]>('products', INITIAL_PRODUCTS);
-      return list.filter(p => p.stock <= p.minStock);
+      return list.filter(p => p && p.stock <= p.minStock);
     }
   },
   create: async (data: Partial<Product>): Promise<Product> => {
     try {
       const res = await api.post('/products', data);
-      return res.data.data;
+      return res.data?.data;
     } catch {
       const list = getStorage<Product[]>('products', INITIAL_PRODUCTS);
       const newProd: Product = {
@@ -232,10 +252,10 @@ export const ProductService = {
   update: async (id: number, data: Partial<Product>): Promise<Product> => {
     try {
       const res = await api.put(`/products/${id}`, data);
-      return res.data.data;
+      return res.data?.data;
     } catch {
       const list = getStorage<Product[]>('products', INITIAL_PRODUCTS);
-      const index = list.findIndex(p => p.id === id);
+      const index = list.findIndex(p => p && p.id === id);
       if (index !== -1) {
         list[index] = { ...list[index], ...data, updatedAt: new Date().toISOString() };
         setStorage('products', list);
@@ -249,12 +269,12 @@ export const ProductService = {
       await api.delete(`/products/${id}`);
     } catch {
       const list = getStorage<Product[]>('products', INITIAL_PRODUCTS);
-      setStorage('products', list.filter(p => p.id !== id));
+      setStorage('products', list.filter(p => p && p.id !== id));
     }
   },
   stockMovement: async (productId: number, quantity: number, movement: 'IN' | 'OUT', reason: string, user: User): Promise<Product> => {
     const list = getStorage<Product[]>('products', INITIAL_PRODUCTS);
-    const prodIndex = list.findIndex(p => p.id === productId);
+    const prodIndex = list.findIndex(p => p && p.id === productId);
     if (prodIndex === -1) throw new Error('Product not found');
     
     if (movement === 'OUT' && list[prodIndex].stock < quantity) {
@@ -289,7 +309,7 @@ export const ChallanService = {
   getAll: async (): Promise<SalesChallan[]> => {
     try {
       const res = await api.get('/challans');
-      return res.data.data || res.data;
+      return res.data?.data || res.data || [];
     } catch {
       return getStorage<SalesChallan[]>('challans', INITIAL_CHALLANS);
     }
@@ -297,15 +317,15 @@ export const ChallanService = {
   create: async (data: { customerId: number; items: { productId: number; quantity: number }[] }, user: User): Promise<SalesChallan> => {
     try {
       const res = await api.post('/challans', data);
-      return res.data.data;
+      return res.data?.data;
     } catch {
       const list = getStorage<SalesChallan[]>('challans', INITIAL_CHALLANS);
       const customers = getStorage<Customer[]>('customers', INITIAL_CUSTOMERS);
       const products = getStorage<Product[]>('products', INITIAL_PRODUCTS);
 
-      const customer = customers.find(c => c.id === data.customerId);
-      const challanItems = data.items.map(item => {
-        const prod = products.find(p => p.id === item.productId);
+      const customer = customers.find(c => c && c.id === data.customerId);
+      const challanItems = (data.items || []).map(item => {
+        const prod = products.find(p => p && p.id === item.productId);
         return {
           id: Date.now() + Math.floor(Math.random() * 100),
           productId: item.productId,
@@ -338,10 +358,10 @@ export const ChallanService = {
   updateStatus: async (id: number, status: 'CONFIRMED' | 'CANCELLED'): Promise<SalesChallan> => {
     try {
       const res = await api.patch(`/challans/${id}/status`, { status });
-      return res.data.data;
+      return res.data?.data;
     } catch {
       const list = getStorage<SalesChallan[]>('challans', INITIAL_CHALLANS);
-      const index = list.findIndex(c => c.id === id);
+      const index = list.findIndex(c => c && c.id === id);
       if (index !== -1) {
         list[index].status = status;
         setStorage('challans', list);
@@ -354,6 +374,10 @@ export const ChallanService = {
 
 export const InventoryLogService = {
   getAll: async (): Promise<InventoryLog[]> => {
-    return getStorage<InventoryLog[]>('inventory_logs', INITIAL_INVENTORY_LOGS);
+    try {
+      return getStorage<InventoryLog[]>('inventory_logs', INITIAL_INVENTORY_LOGS);
+    } catch {
+      return INITIAL_INVENTORY_LOGS;
+    }
   }
 };

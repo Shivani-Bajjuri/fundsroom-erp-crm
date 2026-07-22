@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Role } from '../../types';
 import { Building2, ArrowRight } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const { login, signup, user } = useAuth();
+  const { login, signup, user, isAuthenticated, authError, setAuthError } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [mode, setMode] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
 
@@ -23,12 +24,21 @@ export const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Check state message from router redirect
+  useEffect(() => {
+    if (location.state?.message) {
+      setErrorMsg(location.state.message);
+    } else if (authError) {
+      setErrorMsg(authError);
+    }
+  }, [location.state, authError]);
+
   // If already logged in, redirect immediately
-  React.useEffect(() => {
-    if (user) {
+  useEffect(() => {
+    if (isAuthenticated && user && user.role) {
       redirectByRole(user.role);
     }
-  }, [user]);
+  }, [isAuthenticated, user]);
 
   const redirectByRole = (role: Role) => {
     switch (role) {
@@ -36,6 +46,7 @@ export const Login: React.FC = () => {
       case 'SALES': navigate('/sales/dashboard', { replace: true }); break;
       case 'WAREHOUSE': navigate('/warehouse/dashboard', { replace: true }); break;
       case 'ACCOUNTS': navigate('/accounts/dashboard', { replace: true }); break;
+      default: navigate('/403', { replace: true }); break;
     }
   };
 
@@ -43,9 +54,12 @@ export const Login: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
+    if (setAuthError) setAuthError(null);
     try {
       const loggedUser = await login(email, password);
-      redirectByRole(loggedUser.role);
+      if (loggedUser && loggedUser.role) {
+        redirectByRole(loggedUser.role);
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Invalid email or password');
     } finally {
@@ -57,6 +71,7 @@ export const Login: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
+    if (setAuthError) setAuthError(null);
     try {
       const newUser = await signup({
         name: signupName,
@@ -64,7 +79,9 @@ export const Login: React.FC = () => {
         password: signupPassword,
         role: signupRole
       });
-      redirectByRole(newUser.role);
+      if (newUser && newUser.role) {
+        redirectByRole(newUser.role);
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Sign up failed');
     } finally {
@@ -91,7 +108,7 @@ export const Login: React.FC = () => {
         {/* Tab Switcher */}
         <div className="grid grid-cols-2 p-1 mb-6 bg-[#080C14] rounded-xl border border-[#1E293B]">
           <button
-            onClick={() => { setMode('LOGIN'); setErrorMsg(''); }}
+            onClick={() => { setMode('LOGIN'); setErrorMsg(''); if (setAuthError) setAuthError(null); }}
             className={`py-1.5 text-xs font-semibold rounded-lg transition-colors ${
               mode === 'LOGIN' ? 'bg-[#1E293B] text-slate-100' : 'text-slate-400 hover:text-slate-200'
             }`}
@@ -99,7 +116,7 @@ export const Login: React.FC = () => {
             Sign In
           </button>
           <button
-            onClick={() => { setMode('SIGNUP'); setErrorMsg(''); }}
+            onClick={() => { setMode('SIGNUP'); setErrorMsg(''); if (setAuthError) setAuthError(null); }}
             className={`py-2 text-xs font-semibold rounded-lg transition-colors ${
               mode === 'SIGNUP' ? 'bg-[#1E293B] text-slate-100' : 'text-slate-400 hover:text-slate-200'
             }`}
@@ -108,15 +125,6 @@ export const Login: React.FC = () => {
           </button>
         </div>
 
-        {/* Quick Credentials Hint Box */}
-        <div className="mb-5 p-3 rounded-lg bg-[#080C14] border border-[#1E293B] text-[11px] text-slate-400 space-y-1">
-          <p className="font-semibold text-slate-300">Quick Test Credentials:</p>
-          <p>• Admin: <span className="font-mono text-[#78A4CB]">admin@fundsroom.com</span></p>
-          <p>• Sales: <span className="font-mono text-[#78A4CB]">sales@fundsroom.com</span></p>
-          <p>• Warehouse: <span className="font-mono text-[#78A4CB]">warehouse@fundsroom.com</span></p>
-          <p>• Accounts: <span className="font-mono text-[#78A4CB]">accounts@fundsroom.com</span></p>
-          <p className="text-[10px] text-slate-500 pt-0.5">(Password: any, e.g. <span className="font-mono">123456</span>)</p>
-        </div>
 
         {/* Error Alert */}
         {errorMsg && (

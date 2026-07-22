@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { ProductService, InventoryLogService } from '../../services/api';
 import { Product, InventoryLog } from '../../types';
-import { ArrowUpRight, ArrowDownLeft, Boxes, Plus } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { Modal } from '../../components/common/Modal';
+import { LoadingSpinner } from '../../components/common/LoadingSpinner';
+import { ErrorAlert } from '../../components/common/ErrorAlert';
 import { useAuth } from '../../context/AuthContext';
 
 export const InventoryPage: React.FC = () => {
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [logs, setLogs] = useState<InventoryLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [movementType, setMovementType] = useState<'IN' | 'OUT'>('IN');
 
@@ -17,12 +22,23 @@ export const InventoryPage: React.FC = () => {
   const [reason, setReason] = useState('Stock adjustment');
 
   const loadData = async () => {
-    const [p, l] = await Promise.all([ProductService.getAll(), InventoryLogService.getAll()]);
-    setProducts(p);
-    setLogs(l);
+    setLoading(true);
+    setError(null);
+    try {
+      const [p, l] = await Promise.all([ProductService.getAll(), InventoryLogService.getAll()]);
+      setProducts(Array.isArray(p) ? p : []);
+      setLogs(Array.isArray(l) ? l : []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch inventory audit logs');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { loadData(); }, []);
+
+  if (loading) return <LoadingSpinner message="Retrieving inventory logs..." />;
+  if (error) return <ErrorAlert title="Inventory Audit Log Error" message={error} onRetry={loadData} />;
 
   const handleTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,7 +48,7 @@ export const InventoryPage: React.FC = () => {
       setIsModalOpen(false);
       loadData();
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || 'Transaction failed');
     }
   };
 
@@ -73,17 +89,17 @@ export const InventoryPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {logs.map(l => (
-                <tr key={l.id}>
-                  <td className="py-3 text-slate-400">{new Date(l.createdAt).toLocaleString()}</td>
-                  <td className="py-3 font-semibold text-white">{l.product?.name || 'Product'}</td>
+              {(logs || []).map(l => (
+                <tr key={l?.id}>
+                  <td className="py-3 text-slate-400">{l?.createdAt ? new Date(l.createdAt).toLocaleString() : ''}</td>
+                  <td className="py-3 font-semibold text-white">{l?.product?.name || 'Product'}</td>
                   <td className="py-3">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${l.movement === 'IN' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                      STOCK {l.movement}
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${l?.movement === 'IN' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                      STOCK {l?.movement}
                     </span>
                   </td>
-                  <td className="py-3 font-bold text-white">{l.quantity}</td>
-                  <td className="py-3 text-slate-300">{l.reason}</td>
+                  <td className="py-3 font-bold text-white">{l?.quantity || 0}</td>
+                  <td className="py-3 text-slate-300">{l?.reason}</td>
                 </tr>
               ))}
             </tbody>
@@ -97,7 +113,7 @@ export const InventoryPage: React.FC = () => {
             <label className="block text-xs font-semibold text-slate-300 mb-1">Select Product SKU</label>
             <select required className="w-full px-3 py-2 bg-dark-900 border border-slate-700 rounded-xl text-xs text-white" value={productId} onChange={e => setProductId(Number(e.target.value))}>
               <option value={0}>Choose product...</option>
-              {products.map(p => <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock})</option>)}
+              {(products || []).map(p => <option key={p?.id} value={p?.id}>{p?.name} (Stock: {p?.stock})</option>)}
             </select>
           </div>
           <div>
