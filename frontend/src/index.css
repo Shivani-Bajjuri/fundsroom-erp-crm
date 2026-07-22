@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: #080C14;
+    color: #F1F5F9;
+  }
+}
+
+/* Refined Palette Tokens */
+:root {
+  --color-cream: #F9E8A2;
+  --color-ice-blue: #B4E1EB;
+  --color-sky-slate: #95BDD7;
+  --color-accent-blue: #78A4CB;
+
+  /* Enterprise UI Dark Theme Tokens */
+  --bg-app: #080C14;
+  --bg-card: #0F172A;
+  --bg-input: #1E293B;
+  --border-card: #334155;
+  --border-focus: #78A4CB;
+  
+  --primary-btn: #78A4CB;
+  --primary-btn-hover: #95BDD7;
+  --primary-btn-text: #0F172A;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #080C14;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Minimal Enterprise Glass Card */
+.glass-card {
+  background-color: #0F172A;
+  border: 1px solid #1E293B;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+}
+
+.glass-card-hover {
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.glass-card-hover:hover {
+  border-color: #334155;
+}
+
+/* Clean Input Styling */
+.input-field {
+  background-color: #1E293B;
+  border: 1px solid #334155;
+  color: #F8FAFC;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: #78A4CB;
+  box-shadow: 0 0 0 2px rgba(120, 164, 203, 0.2);
+}
+
+/* Role Palette Highlights based on requested colors */
+.role-admin {
+  --role-primary: #78A4CB;
+  --role-secondary: #95BDD7;
+  --role-border: #334155;
+}
+
+.role-sales {
+  --role-primary: #B4E1EB;
+  --role-secondary: #78A4CB;
+  --role-border: #334155;
+}
+
+.role-warehouse {
+  --role-primary: #F9E8A2;
+  --role-secondary: #95BDD7;
+  --role-border: #334155;
+}
+
+.role-accounts {
+  --role-primary: #95BDD7;
+  --role-secondary: #B4E1EB;
+  --role-border: #334155;
+}
